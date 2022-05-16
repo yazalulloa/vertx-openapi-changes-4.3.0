@@ -5,10 +5,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
-import io.vertx.ext.web.handler.BodyHandler;
-import io.vertx.ext.web.handler.CorsHandler;
-import io.vertx.ext.web.handler.StaticHandler;
-import io.vertx.ext.web.handler.TimeoutHandler;
+import io.vertx.ext.web.handler.*;
 import io.vertx.ext.web.openapi.RouterBuilder;
 import io.vertx.ext.web.openapi.RouterBuilderOptions;
 import org.slf4j.Logger;
@@ -31,10 +28,6 @@ public class Application {
         RouterBuilder.create(vertx, "openapi.yaml")
                 .map(routerBuilder -> {
 
-                    final var routerBuilderOptions = new RouterBuilderOptions()
-                            .setMountResponseContentTypeHandler(true);// Mount ResponseContentTypeHandler automatically
-
-                    routerBuilder.setOptions(routerBuilderOptions);
 
                     final var allowedHeaders = new HashSet<String>();
                     allowedHeaders.add("Authorization");
@@ -47,20 +40,23 @@ public class Application {
                     allowedMethods.add(HttpMethod.DELETE);
                     allowedMethods.add(HttpMethod.PUT);
 
+                    routerBuilder.rootHandler(LoggerHandler.create(true, LoggerHandler.DEFAULT_FORMAT));
+                    routerBuilder.rootHandler(TimeoutHandler.create(180000));
                     routerBuilder.rootHandler(CorsHandler.create("*").allowedHeaders(allowedHeaders).allowedMethods(allowedMethods));
-
                     routerBuilder.bodyHandler(BodyHandler.create().setBodyLimit(40000000).setDeleteUploadedFilesOnEnd(true).setHandleFileUploads(true));
 
-                    routerBuilder.rootHandler(RequestLogHandler.create());
-                    routerBuilder.rootHandler(TimeoutHandler.create(180000));
-
-                    routerBuilder.mountServicesFromExtensions();
+                    /*Consumer<Operation> operationConsumer = operation -> {
+                        operation.handler(LoggerHandler.create(true, LoggerHandler.DEFAULT_FORMAT));
+                        operation.handler(TimeoutHandler.create(180000));
+                        operation.handler(CorsHandler.create("*").allowedHeaders(allowedHeaders).allowedMethods(allowedMethods));
+                        operation.handler(BodyHandler.create().setBodyLimit(40000000).setDeleteUploadedFilesOnEnd(true).setHandleFileUploads(true));
+                    };*/
 
 
                     final var operationsRegistered = new LinkedHashSet<String>();
                     routerBuilder.operations().forEach(operation -> {
 
-
+                        //operationConsumer.accept(operation);
                         operation.handler(ctx -> {
                                     final var jsonObject = new JsonObject().put("hello", "world");
                                     ctx.json(jsonObject);
@@ -73,6 +69,13 @@ public class Application {
                         operationsRegistered.add(operation.getOpenAPIPath() + " " + operation.getHttpMethod().name());
 
                     });
+
+                    final var routerBuilderOptions = new RouterBuilderOptions()
+                            .setMountResponseContentTypeHandler(true);// Mount ResponseContentTypeHandler automatically
+
+                    routerBuilder.setOptions(routerBuilderOptions);
+
+                    routerBuilder.mountServicesFromExtensions();
 
                     final var join = operationsRegistered.stream().sorted().collect(Collectors.joining("\n"));
 
